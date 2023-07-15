@@ -14,6 +14,7 @@ import io
 import os, pickle, sklearn
 import time
 from IPython import embed
+import wandb
 
 def get_time():
     return (str(datetime.now())[:-10]).replace(' ', '-').replace(':', '-')
@@ -238,12 +239,16 @@ def perform_val_deit(multi_gpu, device, embedding_size, batch_size, backbone, di
 
     return accuracy.mean(), accuracy.std(), _xnorm, best_thresholds.mean(), roc_curve_tensor
 
-def buffer_val(writer, db_name, acc, std, xnorm, best_threshold, roc_curve_tensor, batch):
-    writer.add_scalar('Accuracy/{}_Accuracy'.format(db_name), acc, batch)
-    writer.add_scalar('Std/{}_Std'.format(db_name), std, batch)
-    writer.add_scalar('XNorm/{}_XNorm'.format(db_name), xnorm, batch)
-    writer.add_scalar('Threshold/{}_Best_Threshold'.format(db_name), best_threshold, batch)
-    writer.add_image('ROC/{}_ROC_Curve'.format(db_name), roc_curve_tensor, batch)
+def buffer_val(db_name, acc, std, xnorm, best_threshold, roc_curve_tensor, batch):
+    # writer.add_scalar('Accuracy/{}_Accuracy'.format(db_name), acc, batch)
+    # writer.add_scalar('Std/{}_Std'.format(db_name), std, batch)
+    # writer.add_scalar('XNorm/{}_XNorm'.format(db_name), xnorm, batch)
+    # writer.add_scalar('Threshold/{}_Best_Threshold'.format(db_name), best_threshold, batch)
+    # writer.add_image('ROC/{}_ROC_Curve'.format(db_name), roc_curve_tensor, batch)
+    wandb.log({"{}_Accuracy".format(db_name): acc, 
+               "{}_Std".format(db_name): std, "{}_XNorm".format(db_name): xnorm, 
+               "{}_Best_Threshold".format(db_name): best_threshold, 
+               "{}_ROC_Curve".format(db_name): roc_curve_tensor}, step=batch)
 
 
 class AverageMeter(object):

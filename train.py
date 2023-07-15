@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
+import wandb
 
 from config import get_config
 from image_iter import FaceDataset
@@ -13,8 +14,8 @@ from util.utils import separate_irse_bn_paras, separate_resnet_bn_paras, separat
 from util.utils import get_val_data, perform_val, get_time, buffer_val, AverageMeter, train_accuracy
 
 import time
-from vit_pytorch import ViT_face
-from vit_pytorch import ViTs_face
+from vit_pytorch_face import ViT_face
+from vit_pytorch_face import ViTs_face
 from IPython import embed
 from timm.scheduler import create_scheduler
 from timm.optim import create_optimizer
@@ -118,7 +119,10 @@ if __name__ == '__main__':
         f.write(str(cfg))
     print("=" * 60)
 
-    writer = SummaryWriter(WORK_PATH) # writer for buffering intermedium results
+    wandb.login(key='808d6ef02f3a9c448c5641c132830eb0c3c83c2a')
+    wandb.init(project="forget learning", group="face recognition")
+    wandb.config.update(cfg)
+    # writer = SummaryWriter(WORK_PATH) # writer for buffering intermedium results
     torch.backends.cudnn.benchmark = True
 
     with open(os.path.join(DATA_ROOT, 'property'), 'r') as f:
@@ -241,9 +245,10 @@ if __name__ == '__main__':
             if ((batch + 1) % DISP_FREQ == 0) and batch != 0:
                 epoch_loss = losses.avg
                 epoch_acc = top1.avg
-                writer.add_scalar("Training/Training_Loss", epoch_loss, batch + 1)
-                writer.add_scalar("Training/Training_Accuracy", epoch_acc, batch + 1)
-
+                # writer.add_scalar("Training/Training_Loss", epoch_loss, batch + 1)
+                # writer.add_scalar("Training/Training_Accuracy", epoch_acc, batch + 1)
+                wandb.log({"Training/Training_Loss": epoch_loss,
+                            "Training/Training_Accuracy": epoch_acc}, step=batch+1)
                 batch_time = time.time() - last_time
                 last_time = time.time()
 
@@ -267,7 +272,7 @@ if __name__ == '__main__':
                 for ver in vers:
                     name, data_set, issame = ver
                     accuracy, std, xnorm, best_threshold, roc_curve = perform_val(MULTI_GPU, DEVICE, EMBEDDING_SIZE, BATCH_SIZE, BACKBONE, data_set, issame)
-                    buffer_val(writer, name, accuracy, std, xnorm, best_threshold, roc_curve, batch + 1)
+                    buffer_val(name, accuracy, std, xnorm, best_threshold, roc_curve, batch + 1)
                     print('[%s][%d]XNorm: %1.5f' % (name, batch+1, xnorm))
                     print('[%s][%d]Accuracy-Flip: %1.5f+-%1.5f' % (name, batch+1, accuracy, std))
                     print('[%s][%d]Best-Threshold: %1.5f' % (name, batch+1, best_threshold))

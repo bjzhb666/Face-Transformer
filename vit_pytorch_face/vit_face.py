@@ -5,6 +5,7 @@ from torch import nn
 
 from torch.nn import Parameter
 from IPython import embed
+import math
 
 MIN_NUM_PATCHES = 16
 
@@ -191,7 +192,7 @@ class CosFace(nn.Module):
 
 class SFaceLoss(nn.Module):
 
-    def __init__(self, in_features, out_features, device_id, s = 64.0, k = 80.0, a = 0.90, b = 1.2):
+    def __init__(self, in_features, out_features, device_id, s = 64.0, k = 80.0, a = 0.80, b = 1.22):
         super(SFaceLoss, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -202,7 +203,7 @@ class SFaceLoss(nn.Module):
         self.b = b
         self.weight = Parameter(torch.FloatTensor(out_features, in_features))
         #nn.init.xavier_uniform_(self.weight)
-        xavier_normal_(self.weight, gain=2, mode='out')
+        nn.init.xavier_normal_(self.weight, gain=2, mode='fan_out')
 
     def forward(self, input, label):
         # --------------------------- cos(theta) & phi(theta) ---------------------------
@@ -218,7 +219,6 @@ class SFaceLoss(nn.Module):
             for i in range(1, len(self.device_id)):
                 temp_x = x.cuda(self.device_id[i])
                 weight = sub_weights[i].cuda(self.device_id[i])
-
                 cosine = torch.cat((cosine, F.linear(F.normalize(temp_x), F.normalize(weight)).cuda(self.device_id[0])), dim=1)
         # --------------------------- s*cos(theta) ---------------------------
         output = cosine * self.s
@@ -234,9 +234,9 @@ class SFaceLoss(nn.Module):
             zero_hot = zero_hot.cuda(self.device_id[0])
         zero_hot.scatter_(1, label.view(-1, 1), 0)
 
-
         WyiX = torch.sum(one_hot * output, 1)
         with torch.no_grad():
+            # theta_yi = torch.acos(WyiX)
             theta_yi = torch.acos(WyiX / self.s)
             weight_yi = 1.0 / (1.0 + torch.exp(-self.k * (theta_yi - self.a)))
         intra_loss = - weight_yi * WyiX
@@ -336,19 +336,16 @@ class Transformer(nn.Module):
         return x
 
 
-class ViTs_face(nn.Module):
-    def __init__(self, *, loss_type, GPU_ID, num_class, image_size, patch_size, ac_patch_size,
-                         pad, dim, depth, heads, mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+class ViT_face(nn.Module):
+    def __init__(self, *, loss_type, GPU_ID, num_class, image_size, patch_size, dim, depth, heads, mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
         super().__init__()
         assert image_size % patch_size == 0, 'Image dimensions must be divisible by the patch size.'
         num_patches = (image_size // patch_size) ** 2
-        patch_dim = channels * ac_patch_size ** 2
+        patch_dim = channels * patch_size ** 2
         assert num_patches > MIN_NUM_PATCHES, f'your number of patches ({num_patches}) is way too small for attention to be effective (at least 16). Try decreasing your patch size'
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
 
         self.patch_size = patch_size
-        self.soft_split = nn.Unfold(kernel_size=(ac_patch_size, ac_patch_size), stride=(self.patch_size, self.patch_size), padding=(pad, pad))
-
 
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         self.patch_to_embedding = nn.Linear(patch_dim, dim)
@@ -379,7 +376,8 @@ class ViTs_face(nn.Module):
 
     def forward(self, img, label= None , mask = None):
         p = self.patch_size
-        x = self.soft_split(img).transpose(1, 2)
+
+        x = rearrange(img, 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = p, p2 = p)
         x = self.patch_to_embedding(x)
         b, n, _ = x.shape
 
